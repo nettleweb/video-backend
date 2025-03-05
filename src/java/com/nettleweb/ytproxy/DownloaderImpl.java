@@ -1,6 +1,6 @@
 package com.nettleweb.ytproxy;
 
-import com.nettleweb.client.Console;
+import com.nettleweb.http.*;
 import org.jetbrains.annotations.*;
 import org.schabi.newpipe.extractor.downloader.*;
 import org.schabi.newpipe.extractor.localization.*;
@@ -13,21 +13,27 @@ import java.util.*;
 final class DownloaderImpl extends Downloader {
 	private final Proxy proxy;
 
-	DownloaderImpl(@Nullable String proxy) {
+	public DownloaderImpl(@NotNull HTTPLogger logger, @Nullable String proxy) {
 		Proxy p = Proxy.NO_PROXY;
 
 		if (proxy != null && !proxy.isEmpty()) {
 			try {
 				URI uri = new URI(proxy);
 				switch (uri.getScheme()) {
-					case "socks4", "socks5" ->
-							p = new Proxy(Proxy.Type.SOCKS, new InetSocketAddress(uri.getHost(), uri.getPort()));
-					case "http", "https" ->
-							p = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(uri.getHost(), uri.getPort()));
-					default -> Console.warn("Unsupported proxy protocol ignored: " + uri);
+					case "http":
+					case "https":
+						p = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(uri.getHost(), uri.getPort()));
+						break;
+					case "socks4":
+					case "socks5":
+						p = new Proxy(Proxy.Type.SOCKS, new InetSocketAddress(uri.getHost(), uri.getPort()));
+						break;
+					default:
+						logger.warn("Unsupported proxy protocol ignored: " + uri);
+						break;
 				}
 			} catch (Exception e) {
-				Console.warn("Failed to parse the specified proxy URL, ignoring...");
+				logger.warn("Failed to parse the specified proxy URL, ignoring...");
 			}
 		}
 
@@ -124,8 +130,8 @@ final class DownloaderImpl extends Downloader {
 
 	@NotNull
 	private Response sendRequest(@NotNull String url, @NotNull String method,
-	                                          @Nullable Map<String, List<String>> headers,
-	                                          @Nullable byte[] data) throws IOException {
+	                             @Nullable Map<String, List<String>> headers,
+	                             @Nullable byte[] data) throws IOException {
 		HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection(this.proxy);
 		connection.setDoInput(true);
 		connection.setDoOutput(true);
@@ -148,7 +154,8 @@ final class DownloaderImpl extends Downloader {
 			out.write(data, 0, data.length);
 			out.flush();
 			out.close();
-		} else connection.connect();
+		} else
+			connection.connect();
 
 		int status = connection.getResponseCode();
 		data = readBytes(status >= 400 ? connection.getErrorStream() : connection.getInputStream());

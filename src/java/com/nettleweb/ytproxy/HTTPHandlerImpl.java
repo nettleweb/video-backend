@@ -1,7 +1,7 @@
 package com.nettleweb.ytproxy;
 
-import com.nettleweb.client.Console;
-import com.sun.net.httpserver.*;
+import com.nettleweb.http.*;
+import com.nettleweb.http.Headers;
 import org.jetbrains.annotations.*;
 import org.schabi.newpipe.extractor.*;
 import org.schabi.newpipe.extractor.channel.*;
@@ -16,32 +16,30 @@ import java.net.*;
 import java.nio.charset.*;
 import java.util.*;
 
-final class HTTPHandlerImpl implements HttpHandler {
-	public static final HTTPHandlerImpl instance = new HTTPHandlerImpl();
+final class HTTPHandlerImpl implements HTTPHandler {
+	private final HTTPLogger logger;
 
-	private HTTPHandlerImpl() {}
+	public HTTPHandlerImpl(@NotNull HTTPLogger logger) {
+		this.logger = logger;
+	}
 
 	@Override
-	public void handle(@NotNull HttpExchange exchange) throws IOException {
-		String method = exchange.getRequestMethod();
+	public HTTPResponse handleRequest(@NotNull HTTPRequest request) throws Exception {
+		String method = request.method;
 		switch (method) {
 			case "GET":
 			case "HEAD":
 				break;
 			case "OPTIONS":
-				sendResponse(exchange, 200, new String[]{
-						"Allow=GET, HEAD, OPTIONS"
-				}, null);
-				return;
+				return new HTTPResponse(200, "", new Headers("Allow: GET, HEAD, OPTIONS"));
 			default:
-				sendResponse(exchange, 405, new String[]{
-						"Allow=GET, HEAD, OPTIONS",
-						"Content-Type=text/plain"
-				}, Res.msg405);
-				return;
+				return new HTTPResponse(405, "", new Headers(
+						"Allow: GET, HEAD, OPTIONS",
+						"Content-Type: text/plain"
+				), Body.from(Res.msg405));
 		}
 
-		URI uri = exchange.getRequestURI();
+		URI uri = new URI(request.url);
 		switch (uri.getRawPath()) {
 			case "/search" -> {
 				Map<String, String> params = getSearchParams(uri.getRawQuery());
@@ -51,16 +49,12 @@ final class HTTPHandlerImpl implements HttpHandler {
 				String page = params.get("p");
 				String sort = params.get("s");
 
-				if (query == null || query.isEmpty()) {
-					sendResponse(exchange, 400, new String[]{"Content-Type=text/plain"}, Res.msg400);
-					return;
-				}
+				if (query == null || query.isEmpty())
+					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
 				StreamingService service = getServiceById(platform);
-				if (service == null) {
-					sendResponse(exchange, 400, new String[]{"Content-Type=text/plain"}, Res.msg400);
-					return;
-				}
+				if (service == null)
+					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
 				try {
 					SearchQueryHandler handler = service.getSearchQHFactory().fromQuery(query,
@@ -87,10 +81,8 @@ final class HTTPHandlerImpl implements HttpHandler {
 						encodeItems(str, info.getRelatedItems());
 					} else {
 						Page p = decodePage(page);
-						if (p == null) {
-							sendResponse(exchange, 400, new String[]{"Content-Type=text/plain"}, Res.msg400);
-							return;
-						}
+						if (p == null)
+							return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
 						ListExtractor.InfoItemsPage<InfoItem> info = SearchInfo.getMoreItems(service, handler, p);
 
@@ -103,13 +95,13 @@ final class HTTPHandlerImpl implements HttpHandler {
 					}
 
 					byte[] data = str.append("}").toString().getBytes(StandardCharsets.UTF_8);
-					sendResponse(exchange, 200, new String[]{
-							"Content-Type=application/json",
-							"Content-Length=" + data.length
-					}, data);
+					return new HTTPResponse(200, "", new Headers(
+							"Content-Type: text/plain",
+							"Content-Length: " + data.length
+					), Body.from(data));
 				} catch (Exception e) {
-					Console.error("Failed to parse search info: ", e);
-					sendResponse(exchange, 500, new String[]{"Content-Type=text/plain"}, Res.msg500);
+					logger.error("Failed to parse search info: ", e);
+					return new HTTPResponse(500, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg500));
 				}
 			}
 			case "/stream" -> {
@@ -117,16 +109,12 @@ final class HTTPHandlerImpl implements HttpHandler {
 				String svc = params.get("t");
 				String url = params.get("u");
 
-				if (url == null || url.isEmpty()) {
-					sendResponse(exchange, 400, new String[]{"Content-Type=text/plain"}, Res.msg400);
-					return;
-				}
+				if (url == null || url.isEmpty())
+					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
 				StreamingService service = getServiceById(svc);
-				if (service == null) {
-					sendResponse(exchange, 400, new String[]{"Content-Type=text/plain"}, Res.msg400);
-					return;
-				}
+				if (service == null)
+					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
 				try {
 					StreamInfo info = StreamInfo.getInfo(service, url);
@@ -156,22 +144,34 @@ final class HTTPHandlerImpl implements HttpHandler {
 
 					// stream
 					str.append(",\"stream\":").append(switch (info.getStreamType()) {
-						case NONE -> "\"none\"";
-						case LIVE_STREAM -> "\"live\"";
-						case AUDIO_STREAM -> "\"audio\"";
-						case VIDEO_STREAM -> "\"video\"";
-						case POST_LIVE_STREAM -> "\"post_live\"";
-						case AUDIO_LIVE_STREAM -> "\"audio_live\"";
-						case POST_LIVE_AUDIO_STREAM -> "\"post_live_audio\"";
+						case NONE ->
+								"\"none\"";
+						case LIVE_STREAM ->
+								"\"live\"";
+						case AUDIO_STREAM ->
+								"\"audio\"";
+						case VIDEO_STREAM ->
+								"\"video\"";
+						case POST_LIVE_STREAM ->
+								"\"post_live\"";
+						case AUDIO_LIVE_STREAM ->
+								"\"audio_live\"";
+						case POST_LIVE_AUDIO_STREAM ->
+								"\"post_live_audio\"";
 					});
 
 					// privacy
 					str.append(",\"privacy\":").append(switch (info.getPrivacy()) {
-						case OTHER -> "\"other\"";
-						case PUBLIC -> "\"public\"";
-						case PRIVATE -> "\"private\"";
-						case INTERNAL -> "\"internal\"";
-						case UNLISTED -> "\"unlisted\"";
+						case OTHER ->
+								"\"other\"";
+						case PUBLIC ->
+								"\"public\"";
+						case PRIVATE ->
+								"\"private\"";
+						case INTERNAL ->
+								"\"internal\"";
+						case UNLISTED ->
+								"\"unlisted\"";
 					});
 
 					// uploader
@@ -232,13 +232,13 @@ final class HTTPHandlerImpl implements HttpHandler {
 					str.deleteCharAt(str.length() - 1).append("]");
 
 					byte[] data = str.append("}").toString().getBytes(StandardCharsets.UTF_8);
-					sendResponse(exchange, 200, new String[]{
-							"Content-Type=application/json",
-							"Content-Length=" + data.length
-					}, data);
+					return new HTTPResponse(200, "", new Headers(
+							"Content-Type: text/plain",
+							"Content-Length: " + data.length
+					), Body.from(data));
 				} catch (Exception e) {
-					Console.error("Failed to parse video stream info: ", e);
-					sendResponse(exchange, 500, new String[]{"Content-Type=text/plain"}, Res.msg500);
+					logger.error("Failed to parse stream info: ", e);
+					return new HTTPResponse(500, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg500));
 				}
 			}
 			case "/channel" -> {
@@ -246,16 +246,12 @@ final class HTTPHandlerImpl implements HttpHandler {
 				String svc = params.get("t");
 				String url = params.get("u");
 
-				if (url == null || url.isEmpty()) {
-					sendResponse(exchange, 400, new String[]{"Content-Type=text/plain"}, Res.msg400);
-					return;
-				}
+				if (url == null || url.isEmpty())
+					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
 				StreamingService service = getServiceById(svc);
-				if (service == null) {
-					sendResponse(exchange, 400, new String[]{"Content-Type=text/plain"}, Res.msg400);
-					return;
-				}
+				if (service == null)
+					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
 				try {
 					ChannelInfo info = ChannelInfo.getInfo(service, url);
@@ -291,13 +287,13 @@ final class HTTPHandlerImpl implements HttpHandler {
 							.append("}");
 
 					byte[] data = str.append("}").toString().getBytes(StandardCharsets.UTF_8);
-					sendResponse(exchange, 200, new String[]{
-							"Content-Type=application/json",
-							"Content-Length=" + data.length
-					}, data);
+					return new HTTPResponse(200, "", new Headers(
+							"Content-Type: text/plain",
+							"Content-Length: " + data.length
+					), Body.from(data));
 				} catch (Exception e) {
-					Console.error("Failed to parse channel info: ", e);
-					sendResponse(exchange, 500, new String[]{"Content-Type=text/plain"}, Res.msg500);
+					logger.error("Failed to parse channel info: ", e);
+					return new HTTPResponse(500, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg500));
 				}
 			}
 			case "/playlist" -> {
@@ -306,16 +302,12 @@ final class HTTPHandlerImpl implements HttpHandler {
 				String url = params.get("u");
 				String page = params.get("p");
 
-				if (url == null || url.isEmpty()) {
-					sendResponse(exchange, 400, new String[]{"Content-Type=text/plain"}, Res.msg400);
-					return;
-				}
+				if (url == null || url.isEmpty())
+					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
 				StreamingService service = getServiceById(svc);
-				if (service == null) {
-					sendResponse(exchange, 400, new String[]{"Content-Type=text/plain"}, Res.msg400);
-					return;
-				}
+				if (service == null)
+					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
 				try {
 					StringBuilder str = new StringBuilder("{");
@@ -335,11 +327,16 @@ final class HTTPHandlerImpl implements HttpHandler {
 
 						// playlist
 						str.append(",\"playlist\":").append(switch (info.getPlaylistType()) {
-							case NORMAL -> "\"normal\"";
-							case MIX_GENRE -> "\"mix_genre\"";
-							case MIX_MUSIC -> "\"mix_music\"";
-							case MIX_STREAM -> "\"mix_stream\"";
-							case MIX_CHANNEL -> "\"mix_channel\"";
+							case NORMAL ->
+									"\"normal\"";
+							case MIX_GENRE ->
+									"\"mix_genre\"";
+							case MIX_MUSIC ->
+									"\"mix_music\"";
+							case MIX_STREAM ->
+									"\"mix_stream\"";
+							case MIX_CHANNEL ->
+									"\"mix_channel\"";
 						});
 
 						// banners
@@ -364,10 +361,8 @@ final class HTTPHandlerImpl implements HttpHandler {
 						encodeItems(str, info.getRelatedItems());
 					} else {
 						Page p = decodePage(page);
-						if (p == null) {
-							sendResponse(exchange, 400, new String[]{"Content-Type=text/plain"}, Res.msg400);
-							return;
-						}
+						if (p == null)
+							return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
 						ListExtractor.InfoItemsPage<StreamInfoItem> info = PlaylistInfo.getMoreItems(service, url, p);
 
@@ -380,13 +375,13 @@ final class HTTPHandlerImpl implements HttpHandler {
 					}
 
 					byte[] data = str.append("}").toString().getBytes(StandardCharsets.UTF_8);
-					sendResponse(exchange, 200, new String[]{
-							"Content-Type=application/json",
-							"Content-Length=" + data.length
-					}, data);
+					return new HTTPResponse(200, "", new Headers(
+							"Content-Type: text/plain",
+							"Content-Length: " + data.length
+					), Body.from(data));
 				} catch (Exception e) {
-					Console.error("Failed to parse playlist info: ", e);
-					sendResponse(exchange, 500, new String[]{"Content-Type=text/plain"}, Res.msg500);
+					logger.error("Failed to parse playlist info: ", e);
+					return new HTTPResponse(500, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg500));
 				}
 			}
 			case "/trending" -> {
@@ -395,10 +390,8 @@ final class HTTPHandlerImpl implements HttpHandler {
 				String page = params.get("p");
 
 				StreamingService service = getServiceById(svc);
-				if (service == null) {
-					sendResponse(exchange, 400, new String[]{"Content-Type=text/plain"}, Res.msg400);
-					return;
-				}
+				if (service == null)
+					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
 				try {
 					KioskExtractor<?> extractor = service.getKioskList().getDefaultKioskExtractor();
@@ -422,10 +415,8 @@ final class HTTPHandlerImpl implements HttpHandler {
 						encodeItems(str, info.getRelatedItems());
 					} else {
 						Page p = decodePage(page);
-						if (p == null) {
-							sendResponse(exchange, 400, new String[]{"Content-Type=text/plain"}, Res.msg400);
-							return;
-						}
+						if (p == null)
+							return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
 						ListExtractor.InfoItemsPage<?> info = extractor.getPage(p);
 
@@ -438,19 +429,24 @@ final class HTTPHandlerImpl implements HttpHandler {
 					}
 
 					byte[] data = str.append("}").toString().getBytes(StandardCharsets.UTF_8);
-					sendResponse(exchange, 200, new String[]{
-							"Content-Type=application/json",
-							"Content-Length=" + data.length
-					}, data);
+					return new HTTPResponse(200, "", new Headers(
+							"Content-Type: text/plain",
+							"Content-Length: " + data.length
+					), Body.from(data));
 				} catch (Exception e) {
-					Console.error("Failed to parse trending info: ", e);
-					sendResponse(exchange, 500, new String[]{"Content-Type=text/plain"}, Res.msg500);
+					logger.error("Failed to parse playlist info: ", e);
+					return new HTTPResponse(500, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg500));
 				}
 			}
-			case "/robots.txt" -> sendResponse(exchange, 200, new String[]{"Content-Type=text/plain"}, Res.robots_txt);
-			case "/favicon.ico" ->
-					sendResponse(exchange, 200, new String[]{"Content-Type=image/x-icon"}, Res.favicon_ico);
-			default -> sendResponse(exchange, 404, new String[]{"Content-Type=text/plain"}, Res.msg404);
+			case "/robots.txt" -> {
+				return new HTTPResponse(200, "", new Headers("Content-Type: text/plain"), Body.from(Res.robots_txt));
+			}
+			case "/favicon.ico" -> {
+				return new HTTPResponse(200, "", new Headers("Content-Type: text/plain"), Body.from(Res.favicon_ico));
+			}
+			default -> {
+				return new HTTPResponse(404, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg404));
+			}
 		}
 	}
 
@@ -486,14 +482,20 @@ final class HTTPHandlerImpl implements HttpHandler {
 					if (ch < 0x20) {
 						String code = Integer.toString(ch, 16);
 						code = switch (code.length()) {
-							case 0 -> "0000";
-							case 1 -> "000" + code;
-							case 2 -> "00" + code;
-							case 3 -> "0" + code;
-							default -> code;
+							case 0 ->
+									"0000";
+							case 1 ->
+									"000" + code;
+							case 2 ->
+									"00" + code;
+							case 3 ->
+									"0" + code;
+							default ->
+									code;
 						};
 						builder.append("\\u").append(code);
-					} else builder.append(ch);
+					} else
+						builder.append(ch);
 					break;
 			}
 		}
@@ -513,11 +515,11 @@ final class HTTPHandlerImpl implements HttpHandler {
 		}
 	}
 
-	private static Page decodePage(String data) {
+	private Page decodePage(String data) {
 		try (ByteArrayInputStream str1 = new ByteArrayInputStream(Base64.getDecoder().decode(data)); ObjectInputStream str2 = new ObjectInputStream(str1)) {
 			return (Page) str2.readObject();
 		} catch (Exception e) {
-			Console.error("Failed to decode page object: ", e);
+			logger.error("Failed to decode page object: ", e);
 			return null; // be more flexible while decoding
 		}
 	}
@@ -552,10 +554,14 @@ final class HTTPHandlerImpl implements HttpHandler {
 		str.append("{\"url\":").append(encodeJSON(item.getUrl()))
 				.append(",\"name\":").append(encodeJSON(item.getName()))
 				.append(",\"type\":").append(switch (item.getInfoType()) {
-					case STREAM -> "\"stream\"";
-					case CHANNEL -> "\"channel\"";
-					case COMMENT -> "\"comment\"";
-					case PLAYLIST -> "\"playlist\"";
+					case STREAM ->
+							"\"stream\"";
+					case CHANNEL ->
+							"\"channel\"";
+					case COMMENT ->
+							"\"comment\"";
+					case PLAYLIST ->
+							"\"playlist\"";
 				})
 				.append(",\"thumbnails\":");
 
@@ -569,13 +575,20 @@ final class HTTPHandlerImpl implements HttpHandler {
 				.append(",\"type\":").append("\"stream\"")
 				.append(",\"short\":").append(item.isShortFormContent())
 				.append(",\"stream\":").append(switch (item.getStreamType()) {
-					case NONE -> "\"none\"";
-					case LIVE_STREAM -> "\"live\"";
-					case AUDIO_STREAM -> "\"audio\"";
-					case VIDEO_STREAM -> "\"video\"";
-					case POST_LIVE_STREAM -> "\"post_live\"";
-					case AUDIO_LIVE_STREAM -> "\"audio_live\"";
-					case POST_LIVE_AUDIO_STREAM -> "\"post_live_audio\"";
+					case NONE ->
+							"\"none\"";
+					case LIVE_STREAM ->
+							"\"live\"";
+					case AUDIO_STREAM ->
+							"\"audio\"";
+					case VIDEO_STREAM ->
+							"\"video\"";
+					case POST_LIVE_STREAM ->
+							"\"post_live\"";
+					case AUDIO_LIVE_STREAM ->
+							"\"audio_live\"";
+					case POST_LIVE_AUDIO_STREAM ->
+							"\"post_live_audio\"";
 				})
 				.append(",\"duration\":").append(item.getDuration())
 				.append(",\"viewCount\":").append(item.getViewCount())
@@ -611,11 +624,16 @@ final class HTTPHandlerImpl implements HttpHandler {
 				.append(",\"type\":").append("\"playlist\"")
 				.append(",\"streams\":").append(item.getStreamCount())
 				.append(",\"playlist\":").append(switch (item.getPlaylistType()) {
-					case NORMAL -> "\"normal\"";
-					case MIX_GENRE -> "\"mix_genre\"";
-					case MIX_MUSIC -> "\"mix_music\"";
-					case MIX_STREAM -> "\"mix_stream\"";
-					case MIX_CHANNEL -> "\"mix_channel\"";
+					case NORMAL ->
+							"\"normal\"";
+					case MIX_GENRE ->
+							"\"mix_genre\"";
+					case MIX_MUSIC ->
+							"\"mix_music\"";
+					case MIX_STREAM ->
+							"\"mix_stream\"";
+					case MIX_CHANNEL ->
+							"\"mix_channel\"";
 				}).append(",\"description\":").append(encodeJSON(item.getDescription().getContent()));
 
 		str.append(",\"uploader\":{\"url\":").append(encodeJSON(item.getUploaderUrl()))
@@ -625,30 +643,6 @@ final class HTTPHandlerImpl implements HttpHandler {
 
 		encodeImages(str, item.getThumbnails());
 		str.append("},");
-	}
-
-	private static void sendResponse(@NotNull HttpExchange exchange, int status, @NotNull String[] headers,
-	                                 byte[] data) throws IOException {
-		Map<String, List<String>> resHeaders = exchange.getResponseHeaders();
-		for (String header : headers) {
-			int i = header.indexOf('=', 1);
-			if (i <= 0)
-				throw new IOException("Invalid header entry: " + header);
-
-			resHeaders.put(header.substring(0, i), List.of(header.substring(i + 1)));
-		}
-
-		int dataLength = data == null ? 0 : data.length;
-		exchange.sendResponseHeaders(status, dataLength);
-
-		if (dataLength > 0 && !exchange.getRequestMethod().equals("HEAD")) {
-			try (OutputStream out = exchange.getResponseBody()) {
-				out.write(data, 0, dataLength);
-				out.flush();
-			}
-		}
-
-		exchange.close();
 	}
 
 	private static StreamingService getServiceById(@Nullable String id) {
