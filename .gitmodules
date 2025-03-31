@@ -1,0 +1,3 @@
+[submodule "potoken"]
+	path = potoken
+	url = git@github.com:nettleweb/potoken-test.git

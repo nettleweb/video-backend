@@ -44,6 +44,9 @@ public final class Main {
 					case "port":
 						parse = 2;
 						break;
+					case "paddr":
+						parse = 6;
+						break;
 					case "proxy":
 						parse = 3;
 						break;
@@ -77,6 +80,9 @@ public final class Main {
 						break;
 					case 3:
 						proxy = arg;
+						parse = 0;
+						break;
+					case 6:
 						parse = 0;
 						break;
 					case 2:
@@ -142,7 +148,7 @@ public final class Main {
 				// ignore
 			}
 
-			YoutubeStreamExtractor.setPoTokenProvider(PoTokenProviderImpl.instance);
+			YoutubeStreamExtractor.setPoTokenProvider(new PoTokenProviderImpl(logger));
 			NewPipe.init(downloader, Localization.fromLocale(Locale.ROOT), new ContentCountry("US"));
 		}
 
