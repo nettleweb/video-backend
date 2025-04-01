@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-set(PROJECT_NAME "ytjni")
+set(PROJECT_NAME "nettleweb")
 set(PROJECT_VERSION "0.1.0")
 set(CMAKE_BUILD_TYPE, "Release")
 project(${PROJECT_NAME} VERSION ${PROJECT_VERSION})

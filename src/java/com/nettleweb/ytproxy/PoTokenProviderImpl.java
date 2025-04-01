@@ -13,8 +13,8 @@ final class PoTokenProviderImpl implements PoTokenProvider {
 	private static final String nodejsPath;
 	private static final String scriptPath;
 
+	private final InetSocketAddress address;
 	private final HTTPLogger logger;
-	private final int port;
 
 	@Nullable
 	private DatagramSocket socket;
@@ -23,9 +23,18 @@ final class PoTokenProviderImpl implements PoTokenProvider {
 
 	private static final class X {
 		private static final String cwd;
+		private static final Set<Process> proc;
 
 		static {
 			cwd = new File(".").getAbsolutePath();
+			proc = new HashSet<>();
+
+			Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+				for (Process p : proc) {
+					if (p.isAlive())
+						p.destroyForcibly();
+				}
+			}, "fi"));
 		}
 
 		private static void ensureTrue(boolean s) {
@@ -103,15 +112,21 @@ _init:
 		if (k < 5)
 			throw new IOException("Failed to await process start");
 
+		Set<Process> proc = X.proc;
+		proc.removeIf(p -> !p.isAlive());
+		proc.add(process);
+
 		return process;
 	}
 
 	@TestOnly
 	public PoTokenProviderImpl(HTTPLogger logger) {
-		final int port = this.port = getAvailPort();
+		InetSocketAddress address = null;
 
 		String script = scriptPath;
 		if (script != null) {
+			int port = getAvailPort();
+			address = new InetSocketAddress("127.0.0.1", port);
 
 			try {
 				this.process = spawnProcess(nodejsPath, script, Integer.toString(port));
@@ -119,11 +134,12 @@ _init:
 				socket.setSendBufferSize(1024);
 				socket.setReuseAddress(true);
 				socket.setBroadcast(true);
-				socket.connect(new InetSocketAddress("127.0.0.1", port));
+				socket.setSoTimeout(8000);
+				socket.connect(address);
 				this.socket = socket;
 			} catch (IOException e) {
 				logger.error(e);
-				script = null;
+				script = null; // goto
 			}
 		}
 
@@ -131,60 +147,76 @@ _init:
 			logger.warn("Warning: PoToken provider has been disabled because node executable is not found.");
 
 		this.logger = logger;
+		this.address = address;
 	}
 
 	@Override
 	public PoTokenResult getWebClientPoToken(String videoId) {
+		InetSocketAddress address = this.address;
 		DatagramSocket socket = this.socket;
+		HTTPLogger logger = this.logger;
 		Process process = this.process;
-		final int port = this.port;
 
-		if (socket != null && process != null) {
+		if (socket != null && process != null && address != null) {
 			if (!process.isAlive()) {
 				synchronized (this) {
 					try {
-						process = this.process = spawnProcess(nodejsPath, scriptPath, Integer.toString(port));
-						socket.connect(new InetSocketAddress("127.0.0.1", port));
+						process = this.process = spawnProcess(nodejsPath, scriptPath, Integer.toString(address.getPort()));
 					} catch (Exception e) {
 						logger.error("Failed to restart poToken generator: ", e);
+						return null;
 					}
 					X.ensureTrue(process.isAlive());
 				}
 			}
 
-			byte[] reqId = Long.toString(System.nanoTime(), 36).getBytes(StandardCharsets.UTF_8);
-			int reqIdLen = reqId.length;
-
-			byte[] buf = new byte[37];
-			buf[0] = 0x46;
-			buf[1] = 0x55;
-			buf[2] = 0x43;
-			buf[3] = 0x4b;
-			buf[4] = 0x21;
-			System.arraycopy(reqId, 0, buf, 5, reqIdLen);
+			final int reqId = (int) System.nanoTime();
+			try {
+				socket.send(new DatagramPacket(new byte[]{
+						0x46, 0x55, 0x43, 0x4b, 0x21,
+						(byte) (reqId & 0xff),
+						(byte) ((reqId >> 8) & 0xff),
+						(byte) ((reqId >> 16) & 0xff),
+						(byte) ((reqId >> 24) & 0xff)
+				}, 0, 9, address));
+			} catch (Exception e) {
+				logger.error("Failed to send poToken request to generator: ", e);
+				return null;
+			}
 
 			try {
-				DatagramPacket packet = new DatagramPacket(buf, 0, 37, new InetSocketAddress("127.0.0.1", port));
-				socket.send(packet);
-				socket.receive(packet);
-				byte[] data = packet.getData();
+				DatagramPacket packet = new DatagramPacket(new byte[1024], 0, 1024, address);
+				long expTime = System.currentTimeMillis() + 15000;
+				byte[] data;
 
-				if (Arrays.equals(data, 0, reqIdLen, reqId, 0, reqIdLen)) {
-					String poToken = "";
-					String visitorData;
+				do {
+					if (System.currentTimeMillis() > expTime)
+						throw new IOException("Timeout after many attempts");
 
-					StringBuilder builder = new StringBuilder();
-					for (int i = reqIdLen + 1; i < data.length; i++) {
-						byte d = data[i];
-						if (d == 0) {
-							poToken = builder.toString();
-							builder = new StringBuilder();
-						} else builder.append((char) d);
+					socket.receive(packet);
+					data = packet.getData();
+				} while (data.length < 4 || reqId != ((data[0] & 0xff) | ((data[1] & 0xff) << 8) | ((data[2] & 0xff) << 16) | ((data[3] & 0xff) << 24)));
+
+				int length = packet.getLength();
+				int sep = -1;
+
+				for (int i = 5; i < length; i++) {
+					if (data[i] == 10) {
+						sep = i;
+						break;
 					}
-					visitorData = builder.toString();
-
-					return new PoTokenResult(visitorData, poToken, null);
 				}
+
+				if (sep < 0)
+					throw new IOException("Remote returned invalid data");
+
+				String poToken = new String(data, 5, sep - 4, StandardCharsets.US_ASCII).trim();
+				String visitorData = new String(data, sep + 1, length - sep - 1, StandardCharsets.US_ASCII).trim();
+
+				if (poToken.isEmpty() || visitorData.isEmpty())
+					throw new IOException("Remote returned empty data");
+
+				return new PoTokenResult(visitorData, poToken, null);
 			} catch (Exception e) {
 				logger.error("Failed to connect to poToken generator: ", e);
 			}

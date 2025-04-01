@@ -38,7 +38,7 @@ sourceSets {
 
 compileJava {
 	options.encoding = "utf-8"
-	options.debug = false
+	options.debug = true
 	options.verbose = false
 	options.warnings = true
 	options.deprecation = true
