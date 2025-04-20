@@ -1,5 +1,5 @@
 # YTProxy
-A simple YouTube proxy API server based on [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor). It is currently used by [NettleWeb Videos](https://nettleweb.com/videos) (A lightweight, privacy-friendly, ad-less, unblocked YouTube client).
+A simple YouTube proxy API server and stream extractor based on [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor), used by [NettleWeb Videos](https://nettleweb.com/videos).
 
 ## Build JAR file
 ```
@@ -20,11 +20,11 @@ GET http://127.0.0.1:8080/search?q=${query}&f=${filter}&p=${page}&s=${sort}
 ```
 `query`: The search query string. (required)
 
-`filter`: The search filter options. Example: `videos`
+`filter`: The search filter options.
 
 `page`: The next page token.
 
-`sort`: The sort filter. Example: `relevance`
+`sort`: The sort filter options.
 
 #### Response
 A JSON-encoded string containing a list of matching videos and their information.
@@ -39,9 +39,12 @@ GET http://127.0.0.1:8080/stream?u=${url}
 A JSON-encoded string containing the video's stream information.
 
 ### Getting trending videos
-### Request
+#### Request
 ```
 GET http://127.0.0.1:8080/trending
 ```
-### Response
+#### Response
 A JSON-encoded string containing a list of videos and their information.
+
+## License
+All code and files within this repository are licensed under the GPL-3.0 License. You are free to modify or redistribute this project under the terms stated in `LICENSE.md.`.
