@@ -1,7 +1,6 @@
 package com.nettleweb.ytproxy;
 
 import com.nettleweb.http.*;
-import com.nettleweb.http.Headers;
 import org.jetbrains.annotations.*;
 import org.schabi.newpipe.extractor.*;
 import org.schabi.newpipe.extractor.channel.*;
@@ -9,6 +8,7 @@ import org.schabi.newpipe.extractor.kiosk.*;
 import org.schabi.newpipe.extractor.linkhandler.*;
 import org.schabi.newpipe.extractor.playlist.*;
 import org.schabi.newpipe.extractor.search.*;
+import org.schabi.newpipe.extractor.search.filter.*;
 import org.schabi.newpipe.extractor.stream.*;
 
 import java.io.*;
@@ -18,6 +18,7 @@ import java.util.*;
 
 final class HTTPHandlerImpl implements HTTPHandler {
 	private final HTTPLogger logger;
+	private String cachedServices;
 
 	public HTTPHandlerImpl(@NotNull HTTPLogger logger) {
 		this.logger = logger;
@@ -41,6 +42,33 @@ final class HTTPHandlerImpl implements HTTPHandler {
 
 		URI uri = new URI(request.url);
 		switch (uri.getRawPath()) {
+			case "/services" -> {
+				String services = this.cachedServices;
+				if (services == null) {
+					StringBuilder str = new StringBuilder("[ ");
+					for (StreamingService s: ServiceList.all()) {
+						str.append("{\"id\":").append(s.getServiceId())
+								.append(",\"url\":").append(encodeJSON(s.getBaseUrl()))
+								.append(",\"name\":").append(encodeJSON(s.getServiceInfo().getName()));
+
+						SearchQueryHandlerFactory factory = s.getSearchQHFactory();
+
+						str.append(",\"sorts\":");
+						encodeFilterItems(str, factory.getAvailableSortFilter());
+						str.append(",\"filters\":");
+						encodeFilterItems(str,factory.getAvailableContentFilter());
+						str.append("},");
+					}
+					str.deleteCharAt(str.length() - 1).append("]");
+					this.cachedServices = services = str.toString();
+				}
+
+				byte[] data = services.getBytes(StandardCharsets.UTF_8);
+				return new HTTPResponse(200, "", new Headers(
+						"Content-Type: text/plain",
+						"Content-Length: " + data.length
+				), Body.from(data));
+			}
 			case "/search" -> {
 				Map<String, String> params = getSearchParams(uri.getRawQuery());
 				String platform = params.get("t");
@@ -57,9 +85,9 @@ final class HTTPHandlerImpl implements HTTPHandler {
 					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
 				try {
-					SearchQueryHandler handler = service.getSearchQHFactory().fromQuery(query,
-							(filter == null || filter.isEmpty()) ? List.of("videos") : List.of(filter.split(",")),
-							(sort == null || sort.isEmpty()) ? "relevance" : sort);
+					SearchQueryHandlerFactory factory = service.getSearchQHFactory();
+					SearchQueryHandler handler = factory.fromQuery(query, matchFilterItems(filter, factory.getAvailableContentFilter()),
+							matchFilterItems(sort, factory.getAvailableSortFilter()));
 
 					StringBuilder str = new StringBuilder("{");
 					if (page == null || page.isEmpty()) {
@@ -69,7 +97,6 @@ final class HTTPHandlerImpl implements HTTPHandler {
 						str.append("\"id\":").append(encodeJSON(info.getId()));
 						str.append(",\"url\":").append(encodeJSON(info.getUrl()));
 						str.append(",\"name\":").append(encodeJSON(info.getName()));
-						str.append(",\"sort\":").append(encodeJSON(info.getSortFilter()));
 						str.append(",\"query\":").append(encodeJSON(info.getSearchString()));
 						str.append(",\"service\":").append(info.getServiceId());
 						str.append(",\"corrected\":").append(info.isCorrectedSearch());
@@ -133,6 +160,7 @@ final class HTTPHandlerImpl implements HTTPHandler {
 					str.append(",\"ageLimit\":").append(info.getAgeLimit());
 					str.append(",\"viewCount\":").append(info.getViewCount());
 					str.append(",\"likeCount\":").append(info.getLikeCount());
+					str.append(",\"thumbnail\":").append(encodeJSON(info.getThumbnailUrl()));
 					str.append(",\"uploadDate\":").append(encodeJSON(info.getTextualUploadDate()));
 					str.append(",\"description\":").append(encodeJSON(info.getDescription().getContent()));
 
@@ -177,6 +205,7 @@ final class HTTPHandlerImpl implements HTTPHandler {
 					// uploader
 					str.append(",\"uploader\":{\"url\":").append(encodeJSON(info.getUploaderUrl()))
 							.append(",\"name\":").append(encodeJSON(info.getUploaderName()))
+							.append(",\"avatar\":").append(encodeJSON(info.getUploaderAvatarUrl()))
 							.append(",\"verified\":").append(info.isUploaderVerified())
 							.append(",\"subscribers\":").append(info.getUploaderSubscriberCount())
 							.append("}");
@@ -184,11 +213,8 @@ final class HTTPHandlerImpl implements HTTPHandler {
 					// subchannel
 					str.append(",\"subchannel\":{\"url\":").append(encodeJSON(info.getSubChannelUrl()))
 							.append(",\"name\":").append(encodeJSON(info.getSubChannelName()))
+							.append(",\"avatar\":").append(encodeJSON(info.getSubChannelAvatarUrl()))
 							.append("}");
-
-					// thumbnails
-					str.append(",\"thumbnails\":");
-					encodeImages(str, info.getThumbnails());
 
 					// audio streams
 					str.append(",\"audioStreams\":[ ");
@@ -196,8 +222,9 @@ final class HTTPHandlerImpl implements HTTPHandler {
 						str.append("{\"id\":").append(encodeJSON(stream.getId()))
 								.append(",\"url\":").append(encodeJSON(stream.getContent()))
 								.append(",\"codec\":").append(encodeJSON(stream.getCodec()))
-								.append(",\"quality\":").append(encodeJSON(stream.getQuality()))
+								.append(",\"format\":").append(stream.getFormatId())
 								.append(",\"bitrate\":").append(stream.getBitrate())
+								.append(",\"quality\":").append(encodeJSON(stream.getQuality()))
 								.append("},");
 					}
 					str.deleteCharAt(str.length() - 1).append("]");
@@ -211,8 +238,10 @@ final class HTTPHandlerImpl implements HTTPHandler {
 								.append(",\"codec\":").append(encodeJSON(stream.getCodec()))
 								.append(",\"width\":").append(stream.getWidth())
 								.append(",\"height\":").append(stream.getHeight())
+								.append(",\"format\":").append(stream.getFormatId())
 								.append(",\"bitrate\":").append(stream.getBitrate())
 								.append(",\"quality\":").append(encodeJSON(stream.getQuality()))
+								.append(",\"resolution\":").append(encodeJSON(stream.getResolution()))
 								.append("},");
 					}
 					str.deleteCharAt(str.length() - 1).append("]");
@@ -262,6 +291,8 @@ final class HTTPHandlerImpl implements HTTPHandler {
 					str.append(",\"url\":").append(encodeJSON(info.getUrl()));
 					str.append(",\"name\":").append(encodeJSON(info.getName()));
 					str.append(",\"feed\":").append(encodeJSON(info.getFeedUrl()));
+					str.append(",\"avatar\":").append(encodeJSON(info.getAvatarUrl()));
+					str.append(",\"banner\":").append(encodeJSON(info.getBannerUrl()));
 					str.append(",\"service\":").append(info.getServiceId());
 					str.append(",\"verified\":").append(info.isVerified());
 					str.append(",\"subscribers\":").append(info.getSubscriberCount());
@@ -273,17 +304,16 @@ final class HTTPHandlerImpl implements HTTPHandler {
 						str.append(encodeJSON(tag)).append(",");
 					str.deleteCharAt(str.length() - 1).append("]");
 
-					// avatars
-					str.append(",\"avatars\":");
-					encodeImages(str, info.getAvatars());
-
-					// banners
-					str.append(",\"banners\":");
-					encodeImages(str, info.getBanners());
+					// donation links
+					str.append(",\"donationLinks\":[ ");
+					for (String e : info.getDonationLinks())
+						str.append(encodeJSON(e)).append(",");
+					str.deleteCharAt(str.length() - 1).append("]");
 
 					// parent channel
 					str.append(",\"parentChannel\":{\"url\":").append(encodeJSON(info.getParentChannelUrl()))
 							.append(",\"name\":").append(encodeJSON(info.getParentChannelName()))
+							.append(",\"avatar\":").append(encodeJSON(info.getParentChannelAvatarUrl()))
 							.append("}");
 
 					byte[] data = str.append("}").toString().getBytes(StandardCharsets.UTF_8);
@@ -318,10 +348,10 @@ final class HTTPHandlerImpl implements HTTPHandler {
 						str.append("\"id\":").append(encodeJSON(info.getId()));
 						str.append(",\"url\":").append(encodeJSON(info.getUrl()));
 						str.append(",\"name\":").append(encodeJSON(info.getName()));
-						str.append(",\"sort\":").append(encodeJSON(info.getSortFilter()));
+						str.append(",\"banner\":").append(encodeJSON(info.getBannerUrl()));
 						str.append(",\"streams\":").append(info.getStreamCount());
 						str.append(",\"service\":").append(info.getServiceId());
-						str.append(",\"description\":").append(encodeJSON(info.getDescription().getContent()));
+						str.append(",\"thumbnail\":").append(encodeJSON(info.getThumbnailUrl()));
 						str.append(",\"nextPageToken\":").append(info.hasNextPage() ?
 								encodeJSON(encodePage(info.getNextPage())) : "null");
 
@@ -339,23 +369,17 @@ final class HTTPHandlerImpl implements HTTPHandler {
 									"\"mix_channel\"";
 						});
 
-						// banners
-						str.append(",\"banners\":");
-						encodeImages(str, info.getBanners());
-
 						// uploader
 						str.append(",\"uploader\":{\"url\":").append(encodeJSON(info.getUploaderUrl()))
 								.append(",\"name\":").append(encodeJSON(info.getUploaderName()))
+								.append(",\"avatar\":").append(encodeJSON(info.getUploaderAvatarUrl()))
 								.append("}");
 
 						// subchannel
 						str.append(",\"subchannel\":{\"url\":").append(encodeJSON(info.getSubChannelUrl()))
 								.append(",\"name\":").append(encodeJSON(info.getSubChannelName()))
+								.append(",\"avatar\":").append(encodeJSON(info.getSubChannelAvatarUrl()))
 								.append("}");
-
-						// thumbnails
-						str.append(",\"thumbnails\":");
-						encodeImages(str, info.getThumbnails());
 
 						// related items
 						encodeItems(str, info.getRelatedItems());
@@ -406,7 +430,6 @@ final class HTTPHandlerImpl implements HTTPHandler {
 						str.append("\"id\":").append(encodeJSON(info.getId()));
 						str.append(",\"url\":").append(encodeJSON(info.getUrl()));
 						str.append(",\"name\":").append(encodeJSON(info.getName()));
-						str.append(",\"sort\":").append(encodeJSON(info.getSortFilter()));
 						str.append(",\"service\":").append(info.getServiceId());
 						str.append(",\"nextPageToken\":").append(info.hasNextPage() ?
 								encodeJSON(encodePage(info.getNextPage())) : "null");
@@ -539,21 +562,12 @@ final class HTTPHandlerImpl implements HTTPHandler {
 		str.deleteCharAt(str.length() - 1).append("]");
 	}
 
-	private static void encodeImages(StringBuilder str, Iterable<Image> images) {
-		str.append("[ ");
-		for (Image image : images) {
-			str.append("{\"url\":").append(encodeJSON(image.getUrl()))
-					.append(",\"width\":").append(image.getWidth())
-					.append(",\"height\":").append(image.getHeight())
-					.append("},");
-		}
-		str.deleteCharAt(str.length() - 1).append("]");
-	}
-
 	private static void encodeInfoItem(StringBuilder str, InfoItem item) {
 		str.append("{\"url\":").append(encodeJSON(item.getUrl()))
 				.append(",\"name\":").append(encodeJSON(item.getName()))
 				.append(",\"type\":").append(switch (item.getInfoType()) {
+					case STAFF ->
+							"\"staff\"";
 					case STREAM ->
 							"\"stream\"";
 					case CHANNEL ->
@@ -562,11 +576,11 @@ final class HTTPHandlerImpl implements HTTPHandler {
 							"\"comment\"";
 					case PLAYLIST ->
 							"\"playlist\"";
+					case BULLET_COMMENT ->
+							"\"bullet_comment\"";
 				})
-				.append(",\"thumbnails\":");
-
-		encodeImages(str, item.getThumbnails());
-		str.append("},");
+				.append(",\"thumbnail\":").append(encodeJSON(item.getThumbnailUrl()))
+				.append("},");
 	}
 
 	private static void encodeStreamInfoItem(StringBuilder str, StreamInfoItem item) {
@@ -592,16 +606,15 @@ final class HTTPHandlerImpl implements HTTPHandler {
 				})
 				.append(",\"duration\":").append(item.getDuration())
 				.append(",\"viewCount\":").append(item.getViewCount())
+				.append(",\"thumbnail\":").append(encodeJSON(item.getThumbnailUrl()))
 				.append(",\"uploadDate\":").append(encodeJSON(item.getTextualUploadDate()))
 				.append(",\"description\":").append(encodeJSON(item.getShortDescription()));
 
 		str.append(",\"uploader\":{\"url\":").append(encodeJSON(item.getUploaderUrl()))
 				.append(",\"name\":").append(encodeJSON(item.getUploaderName()))
+				.append(",\"avatar\":").append(encodeJSON(item.getUploaderAvatarUrl()))
 				.append(",\"verified\":").append(item.isUploaderVerified())
-				.append("},\"thumbnails\":");
-
-		encodeImages(str, item.getThumbnails());
-		str.append("},");
+				.append("}},");
 	}
 
 	private static void encodeChannelInfoItem(StringBuilder str, ChannelInfoItem item) {
@@ -610,12 +623,10 @@ final class HTTPHandlerImpl implements HTTPHandler {
 				.append(",\"type\":").append("\"channel\"")
 				.append(",\"streams\":").append(item.getStreamCount())
 				.append(",\"verified\":").append(item.isVerified())
+				.append(",\"thumbnail\":").append(encodeJSON(item.getThumbnailUrl()))
 				.append(",\"subscribers\":").append(item.getSubscriberCount())
 				.append(",\"description\":").append(encodeJSON(item.getDescription()))
-				.append(",\"thumbnails\":");
-
-		encodeImages(str, item.getThumbnails());
-		str.append("},");
+				.append("},");
 	}
 
 	private static void encodePlaylistInfoItem(StringBuilder str, PlaylistInfoItem item) {
@@ -623,6 +634,7 @@ final class HTTPHandlerImpl implements HTTPHandler {
 				.append(",\"name\":").append(encodeJSON(item.getName()))
 				.append(",\"type\":").append("\"playlist\"")
 				.append(",\"streams\":").append(item.getStreamCount())
+				.append(",\"uploader\":").append(encodeJSON(item.getUploaderName()))
 				.append(",\"playlist\":").append(switch (item.getPlaylistType()) {
 					case NORMAL ->
 							"\"normal\"";
@@ -634,15 +646,32 @@ final class HTTPHandlerImpl implements HTTPHandler {
 							"\"mix_stream\"";
 					case MIX_CHANNEL ->
 							"\"mix_channel\"";
-				}).append(",\"description\":").append(encodeJSON(item.getDescription().getContent()));
+				})
+				.append(",\"thumbnail\":").append(encodeJSON(item.getThumbnailUrl()))
+				.append("},");
+	}
 
-		str.append(",\"uploader\":{\"url\":").append(encodeJSON(item.getUploaderUrl()))
-				.append(",\"name\":").append(encodeJSON(item.getUploaderName()))
-				.append(",\"verified\":").append(item.isUploaderVerified())
-				.append("},\"thumbnails\":");
+	private static void encodeFilterItems(StringBuilder str, @Nullable Filter filter) {
+		str.append("[ ");
 
-		encodeImages(str, item.getThumbnails());
-		str.append("},");
+		if (filter != null) {
+			for (FilterGroup group: filter.getFilterGroups()) {
+				str.append("{\"id\":").append(group.identifier)
+						.append(",\"name\":").append(encodeJSON(group.groupName))
+						.append(",\"single\":").append(group.onlyOneCheckable)
+						.append(",\"items\":[ ");
+
+				for (FilterItem item: group.filterItems) {
+					str.append("{\"id\":").append(item.getIdentifier())
+							.append(",\"name\":").append(encodeJSON(item.getName()))
+							.append("},");
+				}
+
+				str.deleteCharAt(str.length() - 1).append("]},");
+			}
+		}
+
+		str.deleteCharAt(str.length() - 1).append("]");
 	}
 
 	private static StreamingService getServiceById(@Nullable String id) {
@@ -671,5 +700,40 @@ final class HTTPHandlerImpl implements HTTPHandler {
 		}
 
 		return params;
+	}
+
+	private static List<FilterItem> matchFilterItems(@Nullable String query, @NotNull Filter available) {
+		if (query == null || query.isEmpty())
+			return List.of(available.getFilterGroups()[0].filterItems);
+
+		List<FilterItem> list = new ArrayList<>();
+		for (String item : query.split(",")) {
+			int i = item.indexOf(":", 1);
+			if (i < 1)
+				continue; // ignore
+
+			int id, group;
+
+			try {
+				group = Integer.parseInt(item.substring(0, i));
+				id = Integer.parseInt(item.substring(i + 1));
+			} catch (NumberFormatException e) {
+				continue; // ignore
+			}
+
+			for (FilterGroup g : available.getFilterGroups()) {
+				if (g.identifier == group) {
+					for (FilterItem f: g.filterItems) {
+						if (f.getIdentifier() == id) {
+							list.add(f);
+							break;
+						}
+					}
+					break;
+				}
+			}
+		}
+
+		return list;
 	}
 }

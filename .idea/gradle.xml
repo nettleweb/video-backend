@@ -4,10 +4,26 @@
   <component name="GradleSettings">
     <option name="linkedExternalProjectsSettings">
       <GradleProjectSettings>
+        <compositeConfiguration>
+          <compositeBuild compositeDefinitionSource="SCRIPT">
+            <builds>
+              <build path="$PROJECT_DIR$/extractor" name="PipePipeExtractor">
+                <projects>
+                  <project path="$PROJECT_DIR$/extractor" />
+                  <project path="$PROJECT_DIR$/extractor/extractor" />
+                  <project path="$PROJECT_DIR$/extractor/timeago-parser" />
+                </projects>
+              </build>
+            </builds>
+          </compositeBuild>
+        </compositeConfiguration>
         <option name="externalProjectPath" value="$PROJECT_DIR$" />
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/extractor" />
+            <option value="$PROJECT_DIR$/extractor/extractor" />
+            <option value="$PROJECT_DIR$/extractor/timeago-parser" />
           </set>
         </option>
       </GradleProjectSettings>

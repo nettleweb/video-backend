@@ -1,17 +1,22 @@
 package com.nettleweb.ytproxy;
 
 import com.nettleweb.http.*;
+import okhttp3.*;
+import okhttp3.Headers;
 import org.jetbrains.annotations.*;
 import org.schabi.newpipe.extractor.downloader.*;
-import org.schabi.newpipe.extractor.localization.*;
+import org.schabi.newpipe.extractor.downloader.Request;
+import org.schabi.newpipe.extractor.downloader.Response;
 
 import java.io.*;
 import java.net.*;
 import java.nio.charset.*;
 import java.util.*;
+import java.util.List;
+import java.util.concurrent.*;
 
 final class DownloaderImpl extends Downloader {
-	private final Proxy proxy;
+	private final OkHttpClient client;
 
 	public DownloaderImpl(@NotNull HTTPLogger logger, @Nullable String proxy) {
 		Proxy p = Proxy.NO_PROXY;
@@ -37,150 +42,71 @@ final class DownloaderImpl extends Downloader {
 			}
 		}
 
-		this.proxy = p;
-	}
-
-	@Override
-	public Response get(@NotNull String url) throws IOException {
-		return sendRequest(url, "GET", null, null);
-	}
-
-	@Override
-	public Response get(@NotNull String url, @Nullable Localization _unused) throws IOException {
-		return sendRequest(url, "GET", null, null);
-	}
-
-	@Override
-	public Response get(@NotNull String url, @Nullable Map<String, List<String>> headers) throws IOException {
-		return sendRequest(url, "GET", headers, null);
-	}
-
-	@Override
-	public Response get(@NotNull String url, @Nullable Map<String, List<String>> headers,
-	                    @Nullable Localization _unused) throws IOException {
-		return sendRequest(url, "GET", headers, null);
-	}
-
-	@Override
-	public Response head(@NotNull String url) throws IOException {
-		return sendRequest(url, "HEAD", null, null);
-	}
-
-	@Override
-	public Response head(@NotNull String url, @Nullable Map<String, List<String>> headers) throws IOException {
-		return sendRequest(url, "HEAD", headers, null);
-	}
-
-	@Override
-	public Response post(@NotNull String url, @Nullable Map<String, List<String>> headers,
-	                     @Nullable byte[] dataToSend) throws IOException {
-		return sendRequest(url, "POST", headers, dataToSend);
-	}
-
-	@Override
-	public Response post(@NotNull String url, @Nullable Map<String, List<String>> headers, @Nullable byte[] dataToSend,
-	                     @Nullable Localization _unused) throws IOException {
-		return sendRequest(url, "POST", headers, dataToSend);
-	}
-
-	@Override
-	public Response postWithContentType(@NotNull String url, @Nullable Map<String, List<String>> headers,
-	                                    @Nullable byte[] dataToSend, @Nullable String contentType) throws IOException {
-		if (headers != null && contentType != null) {
-			headers = new HashMap<>(headers);
-			headers.put("Content-Type", List.of(contentType));
-		}
-		return sendRequest(url, "POST", headers, dataToSend);
-	}
-
-	@Override
-	public Response postWithContentType(@NotNull String url, @Nullable Map<String, List<String>> headers,
-	                                    @Nullable byte[] dataToSend, @Nullable Localization _unused,
-	                                    @Nullable String contentType) throws IOException {
-		if (headers != null && contentType != null) {
-			headers = new HashMap<>(headers);
-			headers.put("Content-Type", List.of(contentType));
-		}
-		return sendRequest(url, "POST", headers, dataToSend);
-	}
-
-	@Override
-	public Response postWithContentTypeJson(@NotNull String url, @Nullable Map<String, List<String>> headers,
-	                                        @Nullable byte[] dataToSend) throws IOException {
-		if (headers != null) {
-			headers = new HashMap<>(headers);
-			headers.put("Content-Type", List.of("application/json"));
-		}
-		return sendRequest(url, "POST", headers, dataToSend);
-	}
-
-	@Override
-	public Response postWithContentTypeJson(String url, Map<String, List<String>> headers, byte[] dataToSend, Localization localization) throws IOException {
-		if (headers != null) {
-			headers = new HashMap<>(headers);
-			headers.put("Content-Type", List.of("application/json"));
-		}
-		return sendRequest(url, "POST", headers, dataToSend);
+		this.client = new OkHttpClient.Builder()
+				.followSslRedirects(true)
+				.followRedirects(true)
+				.connectTimeout(5000, TimeUnit.MILLISECONDS)
+				.fastFallback(false)
+				.callTimeout(15000, TimeUnit.MILLISECONDS)
+				.proxy(p)
+				.dns(DefaultDNSClient.instance)
+				.build();
 	}
 
 	@Override
 	public Response execute(@NotNull Request request) throws IOException {
-		return sendRequest(request.url(), request.httpMethod(), request.headers(), request.dataToSend());
+		try (okhttp3.Response r = this.createRequestCall(request.url(), request.httpMethod(),
+				request.headers(), request.dataToSend()).execute(); ResponseBody b = r.body()) {
+			byte[] body = b.bytes();
+			return new Response(r.code(), r.message(), r.headers().toMultimap(),
+					new String(body, StandardCharsets.UTF_8), body, r.request().url().toString());
+		}
+	}
+
+	@Override
+	public CancellableCall executeAsync(@NotNull Request request, AsyncCallback callback) throws IOException {
+		Call call = this.createRequestCall(request.url(), request.httpMethod(), request.headers(), request.dataToSend());
+		CancellableCall cancellableCall = new CancellableCall(call);
+
+		call.enqueue(new Callback() {
+			@Override
+			public void onFailure(@NotNull Call call, @NotNull IOException e) {
+				callback.onError(e);
+				cancellableCall.setFinished();
+			}
+
+			@Override
+			public void onResponse(@NotNull Call call, @NotNull okhttp3.Response r) {
+				try (ResponseBody b = r.body()) {
+					byte[] body = b.bytes();
+					callback.onSuccess(new Response(r.code(), r.message(), r.headers().toMultimap(),
+							new String(body, StandardCharsets.UTF_8), body, r.request().url().toString()));
+				} catch (Exception e) {
+					// ignore
+				}
+
+				r.close();
+				cancellableCall.setFinished();
+			}
+		});
+
+		return cancellableCall;
 	}
 
 	@NotNull
-	private Response sendRequest(@NotNull String url, @NotNull String method,
-	                             @Nullable Map<String, List<String>> headers,
-	                             @Nullable byte[] data) throws IOException {
-		HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection(this.proxy);
-		connection.setDoInput(true);
-		connection.setDoOutput(true);
-		connection.setUseCaches(false);
-		connection.setReadTimeout(10000);
-		connection.setRequestMethod(method);
-		connection.setConnectTimeout(10000);
-		connection.setInstanceFollowRedirects(true);
-
+	private Call createRequestCall(@NotNull String url, @NotNull String method,
+	                               @Nullable Map<String, List<String>> headers,
+	                               @Nullable byte[] data) {
+		Headers.Builder head = new Headers.Builder();
 		if (headers != null) {
 			for (Map.Entry<String, List<String>> e : headers.entrySet()) {
-				String key = e.getKey();
+				final String k = e.getKey();
 				for (String v : e.getValue())
-					connection.addRequestProperty(key, v);
+					head.add(k, v);
 			}
 		}
 
-		if (data != null) {
-			OutputStream out = connection.getOutputStream();
-			out.write(data, 0, data.length);
-			out.flush();
-			out.close();
-		} else
-			connection.connect();
-
-		int status = connection.getResponseCode();
-		data = readBytes(status >= 400 ? connection.getErrorStream() : connection.getInputStream());
-
-		return new Response(status, connection.getResponseMessage(), connection.getHeaderFields(), data.length > 0 ?
-				new String(data, StandardCharsets.UTF_8) : null, connection.getURL().toString());
-	}
-
-	private static byte[] readBytes(InputStream stream) throws IOException {
-		byte[] buffer = new byte[8192];
-		byte[] outBuf = new byte[0];
-
-		for (int i = stream.read(buffer, 0, 8192); i >= 0; i = stream.read(buffer, 0, 8192))
-			outBuf = mergeBytes(outBuf, buffer, i);
-
-		stream.close();
-		return outBuf;
-	}
-
-	private static byte[] mergeBytes(byte[] one, byte[] two, int len) {
-		int baseLength = one.length;
-		byte[] merged = new byte[baseLength + len];
-
-		System.arraycopy(one, 0, merged, 0, baseLength);
-		System.arraycopy(two, 0, merged, baseLength, len);
-		return merged;
+		return this.client.newCall(new okhttp3.Request(HttpUrl.get(url), head.build(),
+				method, data == null ? null : RequestBody.create(data)));
 	}
 }

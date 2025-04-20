@@ -5,7 +5,6 @@ import org.schabi.newpipe.extractor.*;
 import org.schabi.newpipe.extractor.downloader.*;
 import org.schabi.newpipe.extractor.kiosk.*;
 import org.schabi.newpipe.extractor.localization.*;
-import org.schabi.newpipe.extractor.services.youtube.extractors.*;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -148,8 +147,7 @@ public final class Main {
 				// ignore
 			}
 
-			YoutubeStreamExtractor.setPoTokenProvider(new PoTokenProviderImpl(logger));
-			NewPipe.init(downloader, Localization.fromLocale(Locale.ROOT), new ContentCountry("US"));
+			NewPipe.init(downloader, new Localization("en", "US"), new ContentCountry("US"));
 		}
 
 		logger.log("Starting server...");
