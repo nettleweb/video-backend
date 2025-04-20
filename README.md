@@ -1,12 +1,17 @@
 # YTProxy
-A simple YouTube proxy API server and stream extractor based on [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor), used by [NettleWeb Videos](https://nettleweb.com/videos).
+A simple YouTube proxy API server and stream extractor used by [NettleWeb Videos](https://nettleweb.com/videos).
 
-## Build JAR file
+## Quick Start
+1. Ensure that [JDK-17](https://jdk.java.net/java-se-ri/17-MR1) is installed on your server.
+2. Clone this repository onto your server with the `--recursive` flag.
+```
+git clone --recursive https://github.com/nettleweb/ytproxy.git
+```
+3. Build the JAR file.
 ```
 ./gradlew jar
 ```
-
-## Start the server
+4. Start the server.
 ```
 java -Xms256m -Xmx1024m -jar ./build/libs/ytproxy-0.1.0.jar -host 127.0.0.1 -port 8080
 ```
