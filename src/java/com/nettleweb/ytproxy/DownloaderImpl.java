@@ -7,16 +7,68 @@ import org.jetbrains.annotations.*;
 import org.schabi.newpipe.extractor.downloader.*;
 import org.schabi.newpipe.extractor.downloader.Request;
 import org.schabi.newpipe.extractor.downloader.Response;
+import org.schabi.newpipe.extractor.services.bilibili.*;
+import org.schabi.newpipe.extractor.services.niconico.*;
+import org.schabi.newpipe.extractor.services.youtube.*;
 
 import java.io.*;
 import java.net.*;
 import java.nio.charset.*;
 import java.util.*;
-import java.util.List;
 import java.util.concurrent.*;
 
 final class DownloaderImpl extends Downloader {
 	private final OkHttpClient client;
+
+//	private static final class cOOkIEs implements CookieJar {
+//		private final CookieStore store = new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER).getCookieStore();
+//
+//		@NotNull
+//		@Override
+//		public List<Cookie> loadForRequest(@NotNull HttpUrl httpUrl) {
+//			List<HttpCookie> cookies = this.store.get(httpUrl.uri());
+//			List<Cookie> list = new ArrayList<>(cookies.size());
+//
+//			for (HttpCookie cookie : cookies) {
+//				Cookie.Builder builder = new Cookie.Builder()
+//						.name(cookie.getName())
+//						.value(cookie.getValue())
+//						.path(cookie.getPath())
+//						.domain(cookie.getDomain());
+//
+//				{
+//					long maxAge = cookie.getMaxAge();
+//					if (maxAge >= 0)
+//						builder.expiresAt(System.currentTimeMillis() + maxAge * 1000);
+//				}
+//
+//				if (cookie.getSecure())
+//					builder.secure();
+//				if (cookie.isHttpOnly())
+//					builder.httpOnly();
+//
+//				list.add(builder.build());
+//			}
+//
+//			return list;
+//		}
+//
+//		@Override
+//		public void saveFromResponse(@NotNull HttpUrl httpUrl, @NotNull List<Cookie> list) {
+//			CookieStore store = this.store;
+//			URI uri = httpUrl.uri();
+//
+//			for (Cookie cookie : list) {
+//				HttpCookie cookie1 = new HttpCookie(cookie.name(), cookie.value());
+//				cookie1.setPath(cookie.path());
+//				cookie1.setDomain(cookie.domain());
+//				cookie1.setSecure(cookie.secure());
+//				cookie1.setMaxAge((cookie.expiresAt() - System.currentTimeMillis()) / 1000);
+//				cookie1.setHttpOnly(cookie.httpOnly());
+//				store.add(uri, cookie1);
+//			}
+//		}
+//	}
 
 	public DownloaderImpl(@NotNull HTTPLogger logger, @Nullable String proxy) {
 		Proxy p = Proxy.NO_PROXY;
@@ -48,6 +100,7 @@ final class DownloaderImpl extends Downloader {
 				.connectTimeout(5000, TimeUnit.MILLISECONDS)
 				.fastFallback(false)
 				.callTimeout(15000, TimeUnit.MILLISECONDS)
+//				.cookieJar(new cOOkIEs())
 				.proxy(p)
 				.dns(DefaultDNSClient.instance)
 				.build();

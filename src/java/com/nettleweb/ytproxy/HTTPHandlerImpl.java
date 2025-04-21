@@ -231,7 +231,7 @@ final class HTTPHandlerImpl implements HTTPHandler {
 
 					// video streams
 					str.append(",\"videoStreams\":[ ");
-					for (VideoStream stream : info.getVideoStreams()) {
+					for (VideoStream stream : (service == ServiceList.BiliBili || service == ServiceList.NicoNico) ? info.getVideoOnlyStreams() : info.getVideoStreams()) {
 						str.append("{\"id\":").append(encodeJSON(stream.getId()))
 								.append(",\"url\":").append(encodeJSON(stream.getContent()))
 								.append(",\"fps\":").append(stream.getFps())
@@ -241,6 +241,7 @@ final class HTTPHandlerImpl implements HTTPHandler {
 								.append(",\"format\":").append(stream.getFormatId())
 								.append(",\"bitrate\":").append(stream.getBitrate())
 								.append(",\"quality\":").append(encodeJSON(stream.getQuality()))
+								.append(",\"videoOnly\":").append(stream.isVideoOnly())
 								.append(",\"resolution\":").append(encodeJSON(stream.getResolution()))
 								.append("},");
 					}
