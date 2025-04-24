@@ -46,7 +46,7 @@ final class HTTPHandlerImpl implements HTTPHandler {
 				String services = this.cachedServices;
 				if (services == null) {
 					StringBuilder str = new StringBuilder("[ ");
-					for (StreamingService s: ServiceList.all()) {
+					for (StreamingService s : ServiceList.all()) {
 						str.append("{\"id\":").append(s.getServiceId())
 								.append(",\"url\":").append(encodeJSON(s.getBaseUrl()))
 								.append(",\"name\":").append(encodeJSON(s.getServiceInfo().getName()));
@@ -56,7 +56,7 @@ final class HTTPHandlerImpl implements HTTPHandler {
 						str.append(",\"sorts\":");
 						encodeFilterItems(str, factory.getAvailableSortFilter());
 						str.append(",\"filters\":");
-						encodeFilterItems(str,factory.getAvailableContentFilter());
+						encodeFilterItems(str, factory.getAvailableContentFilter());
 						str.append("},");
 					}
 					str.deleteCharAt(str.length() - 1).append("]");
@@ -656,13 +656,13 @@ final class HTTPHandlerImpl implements HTTPHandler {
 		str.append("[ ");
 
 		if (filter != null) {
-			for (FilterGroup group: filter.getFilterGroups()) {
+			for (FilterGroup group : filter.getFilterGroups()) {
 				str.append("{\"id\":").append(group.identifier)
 						.append(",\"name\":").append(encodeJSON(group.groupName))
 						.append(",\"single\":").append(group.onlyOneCheckable)
 						.append(",\"items\":[ ");
 
-				for (FilterItem item: group.filterItems) {
+				for (FilterItem item : group.filterItems) {
 					str.append("{\"id\":").append(item.getIdentifier())
 							.append(",\"name\":").append(encodeJSON(item.getName()))
 							.append("},");
@@ -703,9 +703,19 @@ final class HTTPHandlerImpl implements HTTPHandler {
 		return params;
 	}
 
-	private static List<FilterItem> matchFilterItems(@Nullable String query, @NotNull Filter available) {
-		if (query == null || query.isEmpty())
-			return List.of(available.getFilterGroups()[0].filterItems);
+	private static List<FilterItem> matchFilterItems(@Nullable String query, @Nullable Filter available) {
+		if (query == null || query.isEmpty() || available == null) {
+			if (available != null) {
+				FilterGroup group = available.getFilterGroups()[0];
+				if (group != null) {
+					if (group.onlyOneCheckable)
+						return List.of(group.filterItems[0]);
+					else
+						return List.of(group.filterItems);
+				}
+			}
+			return List.of();
+		}
 
 		List<FilterItem> list = new ArrayList<>();
 		for (String item : query.split(",")) {
@@ -724,7 +734,7 @@ final class HTTPHandlerImpl implements HTTPHandler {
 
 			for (FilterGroup g : available.getFilterGroups()) {
 				if (g.identifier == group) {
-					for (FilterItem f: g.filterItems) {
+					for (FilterItem f : g.filterItems) {
 						if (f.getIdentifier() == id) {
 							list.add(f);
 							break;

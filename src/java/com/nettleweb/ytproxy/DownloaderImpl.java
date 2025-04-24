@@ -7,9 +7,6 @@ import org.jetbrains.annotations.*;
 import org.schabi.newpipe.extractor.downloader.*;
 import org.schabi.newpipe.extractor.downloader.Request;
 import org.schabi.newpipe.extractor.downloader.Response;
-import org.schabi.newpipe.extractor.services.bilibili.*;
-import org.schabi.newpipe.extractor.services.niconico.*;
-import org.schabi.newpipe.extractor.services.youtube.*;
 
 import java.io.*;
 import java.net.*;
