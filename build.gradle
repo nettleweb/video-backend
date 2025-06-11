@@ -1,5 +1,6 @@
 plugins {
 	id "java"
+	id "com.github.ben-manes.versions" version "0.52.0"
 }
 
 java {
@@ -49,14 +50,14 @@ compileJava {
 
 repositories {
 	google()
-	maven { url "https://jitpack.io" }
-	maven { url "https://maven.fabric.io/public" }
+	maven { url = "https://jitpack.io" }
+	maven { url = "https://maven.fabric.io/public" }
 	mavenCentral()
 }
 
 dependencies {
-	compileOnly "org.jetbrains:annotations:13.0"
+	compileOnly "org.jetbrains:annotations:26.0.2"
 	implementation "com.nettleweb:http:0.1.0"
-	implementation "com.squareup.okhttp3:okhttp:5.0.0-alpha.12"
+	implementation "com.squareup.okhttp3:okhttp-jvm:5.0.0-alpha.16"
 	implementation "com.github.TeamNewPipe:NewPipeExtractor:6a858368c86bc9a55abee586eb6c733e86c26b97"
 }

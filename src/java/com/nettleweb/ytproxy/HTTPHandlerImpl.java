@@ -231,19 +231,25 @@ final class HTTPHandlerImpl implements HTTPHandler {
 
 					// video streams
 					str.append(",\"videoStreams\":[ ");
-					for (VideoStream stream : (service == ServiceList.BiliBili || service == ServiceList.NicoNico) ? info.getVideoOnlyStreams() : info.getVideoStreams()) {
-						str.append("{\"id\":").append(encodeJSON(stream.getId()))
-								.append(",\"url\":").append(encodeJSON(stream.getContent()))
-								.append(",\"fps\":").append(stream.getFps())
-								.append(",\"codec\":").append(encodeJSON(stream.getCodec()))
-								.append(",\"width\":").append(stream.getWidth())
-								.append(",\"height\":").append(stream.getHeight())
-								.append(",\"format\":").append(stream.getFormatId())
-								.append(",\"bitrate\":").append(stream.getBitrate())
-								.append(",\"quality\":").append(encodeJSON(stream.getQuality()))
-								.append(",\"videoOnly\":").append(stream.isVideoOnly())
-								.append(",\"resolution\":").append(encodeJSON(stream.getResolution()))
-								.append("},");
+					{
+						List<VideoStream> streams = info.getVideoStreams();
+						if (streams.isEmpty())
+							streams = info.getVideoOnlyStreams(); // fallback
+
+						for (VideoStream stream : streams) {
+							str.append("{\"id\":").append(encodeJSON(stream.getId()))
+									.append(",\"url\":").append(encodeJSON(stream.getContent()))
+									.append(",\"fps\":").append(stream.getFps())
+									.append(",\"codec\":").append(encodeJSON(stream.getCodec()))
+									.append(",\"width\":").append(stream.getWidth())
+									.append(",\"height\":").append(stream.getHeight())
+									.append(",\"format\":").append(stream.getFormatId())
+									.append(",\"bitrate\":").append(stream.getBitrate())
+									.append(",\"quality\":").append(encodeJSON(stream.getQuality()))
+									.append(",\"videoOnly\":").append(stream.isVideoOnly())
+									.append(",\"resolution\":").append(encodeJSON(stream.getResolution()))
+									.append("},");
+						}
 					}
 					str.deleteCharAt(str.length() - 1).append("]");
 
