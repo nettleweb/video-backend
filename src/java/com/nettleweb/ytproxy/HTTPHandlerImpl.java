@@ -133,13 +133,12 @@ final class HTTPHandlerImpl implements HTTPHandler {
 			}
 			case "/stream" -> {
 				Map<String, String> params = getSearchParams(uri.getRawQuery());
-				String svc = params.get("t");
-				String url = params.get("u");
 
+				String url = params.get("u");
 				if (url == null || url.isEmpty())
 					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
-				StreamingService service = getServiceById(svc);
+				StreamingService service = getServiceById(params.get("t"), url);
 				if (service == null)
 					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
@@ -156,6 +155,7 @@ final class HTTPHandlerImpl implements HTTPHandler {
 					str.append(",\"service\":").append(info.getServiceId());
 					str.append(",\"license\":").append(encodeJSON(info.getLicence()));
 					str.append(",\"category\":").append(encodeJSON(info.getCategory()));
+					str.append(",\"comments\":").append(info.isSupportComments());
 					str.append(",\"duration\":").append(info.getDuration());
 					str.append(",\"ageLimit\":").append(info.getAgeLimit());
 					str.append(",\"viewCount\":").append(info.getViewCount());
@@ -279,13 +279,12 @@ final class HTTPHandlerImpl implements HTTPHandler {
 			}
 			case "/channel" -> {
 				Map<String, String> params = getSearchParams(uri.getRawQuery());
-				String svc = params.get("t");
-				String url = params.get("u");
 
+				String url = params.get("u");
 				if (url == null || url.isEmpty())
 					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
-				StreamingService service = getServiceById(svc);
+				StreamingService service = getServiceById(params.get("t"), url);
 				if (service == null)
 					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
@@ -342,7 +341,7 @@ final class HTTPHandlerImpl implements HTTPHandler {
 				if (url == null || url.isEmpty())
 					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
-				StreamingService service = getServiceById(svc);
+				StreamingService service = getServiceById(svc, url);
 				if (service == null)
 					return new HTTPResponse(400, "", new Headers("Content-Type: text/plain"), Body.from(Res.msg400));
 
@@ -687,6 +686,17 @@ final class HTTPHandlerImpl implements HTTPHandler {
 
 		try {
 			return ServiceList.all().get(Integer.parseUnsignedInt(id, 10));
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	private static StreamingService getServiceById(@Nullable String id, @NotNull String url) {
+		if (id != null && !id.isEmpty())
+			return getServiceById(id);
+
+		try {
+			return NewPipe.getServiceByUrl(url);
 		} catch (Exception e) {
 			return null;
 		}
