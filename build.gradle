@@ -56,7 +56,8 @@ repositories {
 
 dependencies {
 	compileOnly "org.jetbrains:annotations:26.0.2"
+	implementation "org.json:json:20260814"
 	implementation "com.nettleweb:http:0.1.0"
-	implementation "com.squareup.okhttp3:okhttp-jvm:5.0.0-alpha.16"
+	implementation "com.squareup.okhttp3:okhttp-jvm:5.5.0"
 	implementation "com.github.TeamNewPipe:NewPipeExtractor:6a858368c86bc9a55abee586eb6c733e86c26b97"
 }
