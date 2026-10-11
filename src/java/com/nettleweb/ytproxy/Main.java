@@ -17,7 +17,7 @@ public final class Main {
 			// ignore
 		}
 		Locale.setDefault(Locale.ROOT);
-		System.setSecurityManager(null);
+		// System.setSecurityManager(null);
 	}
 
 	private Main() {}

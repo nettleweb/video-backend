@@ -296,7 +296,7 @@ final class HTTPHandlerImpl implements HTTPHandler {
 					str.append("\"id\":").append(encodeJSON(info.getId()));
 					str.append(",\"url\":").append(encodeJSON(info.getUrl()));
 					str.append(",\"name\":").append(encodeJSON(info.getName()));
-					str.append(",\"feed\":").append(encodeJSON(info.getFeedUrl()));
+					//str.append(",\"feed\":").append(encodeJSON(info.getFeedUrl()));
 					str.append(",\"avatar\":").append(encodeJSON(info.getAvatarUrl()));
 					str.append(",\"banner\":").append(encodeJSON(info.getBannerUrl()));
 					str.append(",\"service\":").append(info.getServiceId());

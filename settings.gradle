@@ -1,4 +1,4 @@
-rootProject.name = "YTProxy"
+rootProject.name = "video-backend"
 
 includeBuild("./extractor") {
 	dependencySubstitution {
